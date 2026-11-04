@@ -1,1 +1,226 @@
 
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>CHIMP RUNNERS</title>
+<script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#071008;color:white;font-family:Arial}
+button,input{padding:12px;border:0;border-radius:9px;margin:5px}
+button{background:#39d52b;color:#071008;font-weight:bold}
+input{background:#18271b;color:white;width:90%}
+.panel{background:#101b13;border:1px solid #42d52b;border-radius:14px;padding:15px;margin:10px}
+#login,#gameUI{position:fixed;inset:0;z-index:5}
+#login{background:#071008;display:flex;align-items:center;justify-content:center;text-align:center}
+#gameUI{display:none;pointer-events:none}
+#top{display:flex;justify-content:space-between;padding:10px}
+#menu{display:none;position:absolute;top:65px;left:10px;width:260px;max-height:75vh;overflow:auto;pointer-events:auto}
+#menu button{width:95%}
+#controls{position:absolute;bottom:15px;left:0;right:0;display:flex;justify-content:space-around;pointer-events:auto}
+#controls button{background:#222;color:white;opacity:.9}
+#message{font-size:13px;color:#b8ffb0}
+</style>
+</head>
+<body>
+
+<div id="login">
+ <div class="panel">
+  <h1 style="color:#55ff38">CHIMP RUNNERS</h1>
+  <p>Create an account or sign in</p>
+  <input id="email" type="email" placeholder="Email">
+  <input id="password" type="password" placeholder="Password">
+  <br>
+  <button onclick="register()">CREATE ACCOUNT</button>
+  <button onclick="login()">LOGIN</button>
+  <p id="message">Connect your Supabase project to begin.</p>
+ </div>
+</div>
+
+<div id="gameUI">
+ <div id="top">
+  <button onclick="toggleMenu()">ATLANTA MENU</button>
+  <span id="username">Player</span>
+ </div>
+ <div id="menu" class="panel">
+  <h2 style="color:#ff3939">ATLANTA MENU</h2>
+  <button onclick="showTab('home')">HOME</button>
+  <button onclick="showTab('wardrobe')">WARDROBE</button>
+  <button onclick="showTab('redeem')">REDEEM COMPUTER</button>
+  <button onclick="showTab('staff')">STAFF</button>
+  <button onclick="showTab('owner')">OWNER PANEL</button>
+  <button onclick="showTab('settings')">SETTINGS</button>
+  <div id="tab">
+   <h3>Welcome to CHIMP RUNNERS</h3>
+   <p>Your jungle adventure begins!</p>
+  </div>
+  <button onclick="signOut()">LOG OUT</button>
+ </div>
+ <div id="controls">
+  <button ontouchstart="move(-1,0)" ontouchend="stopMove()">LEFT</button>
+  <button ontouchstart="jump()" ontouchend="stopJump()">JUMP</button>
+  <button ontouchstart="move(1,0)" ontouchend="stopMove()">RIGHT</button>
+ </div>
+</div>
+
+<a-scene background="color:#80c8ef"
+ vr-mode-ui="enabled:true"
+ renderer="antialias:true">
+ <a-plane rotation="-90 0 0" width="200" height="200" color="#286c25"></a-plane>
+ <a-entity id="trees"></a-entity>
+ <a-box position="0 1 -7" width="5" height=".5" depth="4" color="#79502b"></a-box>
+ <a-box position="6 2 -12" width="4" height=".5" depth="4" color="#79502b"></a-box>
+ <a-box position="-7 1.5 -10" width="4" height=".5" depth="4" color="#79502b"></a-box>
+ <a-entity id="rig" position="0 1.6 4">
+  <a-camera id="camera" wasd-controls-enabled="false"></a-camera>
+  <a-entity id="leftHand" laser-controls="hand:left"></a-entity>
+  <a-entity id="rightHand" laser-controls="hand:right"></a-entity>
+ </a-entity>
+ <a-light type="ambient" intensity="1.1"></a-light>
+ <a-light type="directional" position="2 8 4" intensity="1"></a-light>
+ <a-sky color="#80c8ef"></a-sky>
+</a-scene>
+
+<script>
+// SUPABASE CONNECTION
+const SUPABASE_URL="PASTE_YOUR_PROJECT_URL_HERE";
+const SUPABASE_KEY="PASTE_YOUR_PUBLISHABLE_KEY_HERE";
+const connected =
+ !SUPABASE_URL.startsWith("PASTE_") &&
+ !SUPABASE_KEY.startsWith("PASTE_");
+
+const db=connected
+ ? window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY)
+ : null;
+
+let currentUser=null;
+let currentProfile=null;
+
+async function register(){
+ if(!db)return alert("Add your Supabase URL and publishable key first.");
+ const email=document.getElementById("email").value.trim();
+ const password=document.getElementById("password").value;
+ const {data,error}=await db.auth.signUp({email,password});
+ if(error)return alert(error.message);
+ if(data.user){
+  alert("Account created! Check your email if confirmation is required.");
+  if(data.session) await loadPlayer(data.user);
+ }
+}
+
+async function login(){
+ if(!db)return alert("Add your Supabase connection details first.");
+ const email=document.getElementById("email").value.trim();
+ const password=document.getElementById("password").value;
+ const {data,error}=await db.auth.signInWithPassword({email,password});
+ if(error)return alert(error.message);
+ await loadPlayer(data.user);
+}
+
+async function loadPlayer(user){
+ currentUser=user;
+ const {data,error}=await db.from("profiles")
+  .select("username,rank")
+  .eq("id",user.id).maybeSingle();
+
+ if(error)return alert(error.message);
+
+ if(!data){
+  const username="Chimp"+user.id.slice(0,6);
+  const result=await db.from("profiles")
+   .insert({id:user.id,username});
+  if(result.error)return alert(result.error.message);
+  currentProfile={username,rank:"Player"};
+ }else{
+  currentProfile=data;
+ }
+ document.getElementById("username").textContent=
+  currentProfile.username+" • "+currentProfile.rank;
+ document.getElementById("login").style.display="none";
+ document.getElementById("gameUI").style.display="block";
+}
+
+async function signOut(){
+ if(db)await db.auth.signOut();
+ currentUser=null;
+ currentProfile=null;
+ location.reload();
+}
+
+if(db){
+ db.auth.getSession().then(({data})=>{
+  if(data.session)loadPlayer(data.session.user);
+ });
+}
+
+// MENU
+function toggleMenu(){
+ const m=document.getElementById("menu");
+ m.style.display=m.style.display==="block"?"none":"block";
+}
+function showTab(tab){
+ const content=document.getElementById("tab");
+ const rank=currentProfile?.rank||"Player";
+ const owner=rank==="Owner";
+ const moderator=["Owner","Moderator","Trial Mod"].includes(rank);
+
+ const pages={
+ home:"<h3>Jungle Lobby</h3><p>Welcome to CHIMP RUNNERS!</p>",
+ wardrobe:"<h3>WARDROBE</h3><p>Cosmetic inventory connection coming next.</p><p>MINIPLUSH • PETEGG • VOICEBOX rewards will be connected to secure redemption.</p>",
+ redeem:"<h3>REDEEM COMPUTER</h3><input id='redeemCode' placeholder='Enter code'><button onclick='redeem()'>REDEEM</button><p id='redeemMessage'>Rewards require secure redemption setup.</p>",
+ staff:"<h3>STAFF MENU</h3>"+(moderator?"<p>Staff interface reserved for verified staff.</p>":"<p>Staff access only.</p>"),
+ owner:"<h3>OWNER PANEL</h3>"+(owner?"<p>Owner tools will appear after secure owner verification is configured.</p>":"<p>Owner access only.</p>"),
+ settings:"<h3>SETTINGS</h3><p>CHIMP RUNNERS settings.</p>"
+ };
+ content.innerHTML=pages[tab]||pages.home;
+}
+
+// REDEEM WILL BE CONNECTED TO A SECURE SERVER FUNCTION
+async function redeem(){
+ document.getElementById("redeemMessage").textContent=
+ "Redemption server is not connected yet. No reward was granted.";
+}
+
+// SIMPLE MOBILE MOVEMENT PROTOTYPE
+const rig=document.getElementById("rig");
+let direction=0;
+let jumping=false;
+function move(d){direction=d;}
+function stopMove(){direction=0;}
+function jump(){jumping=true;}
+function stopJump(){jumping=false;}
+
+function update(){
+ requestAnimationFrame(update);
+ if(!currentUser)return;
+ if(!document.querySelector("a-scene").is("vr-mode")){
+  const p=rig.object3D.position;
+  p.x+=direction*.045;
+  if(jumping && p.y<=2.5)p.y+=.04;
+  else if(!jumping && p.y>1.6)p.y-=.04;
+  if(p.y<1.6)p.y=1.6;
+ }
+}
+update();
+
+// DECORATIVE JUNGLE TREES
+const forest=document.getElementById("trees");
+for(let i=0;i<65;i++){
+ const x=(Math.random()-.5)*75;
+ const z=(Math.random()-.5)*75;
+ if(Math.abs(x)<5&&z>0&&z<12)continue;
+ const tree=document.createElement("a-entity");
+ tree.setAttribute("position",`${x} 0 ${z}`);
+ tree.innerHTML=`
+ <a-cylinder position="0 2 0" radius=".35" height="4" color="#684126"></a-cylinder>
+ <a-sphere position="0 4.4 0" radius="2" color="#167b28"></a-sphere>`;
+ forest.appendChild(tree);
+}
+</script>
+</body>
+</html>
+const SUPABASE_URL=https://pskoddygczabdleqmfmy.supabase.co/rest/v1/
+const SUPABASE_KEY=sb_publishable_3uUiVrKaCzq547DMOSUD8Q_-K2U1259
